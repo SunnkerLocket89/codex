@@ -23,7 +23,7 @@ where
     // Step 1 – determine the starting set of variables based on the
     // `inherit` strategy.
     let mut env_map: HashMap<String, String> = match policy.inherit {
-        ShellEnvironmentPolicyInherit::All => all_vars.clone().into_iter().collect(),
+        ShellEnvironmentPolicyInherit::All => all_vars.into_iter().collect(),
         ShellEnvironmentPolicyInherit::None => HashMap::new(),
         ShellEnvironmentPolicyInherit::Core => {
             #[cfg(not(target_os = "windows"))]
