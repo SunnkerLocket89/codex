@@ -19,19 +19,50 @@ fn populate_env<I>(vars: I, policy: &ShellEnvironmentPolicy) -> HashMap<String, 
 where
     I: IntoIterator<Item = (String, String)>,
 {
+    let all_vars: Vec<(String, String)> = vars.into_iter().collect();
     // Step 1 – determine the starting set of variables based on the
     // `inherit` strategy.
     let mut env_map: HashMap<String, String> = match policy.inherit {
-        ShellEnvironmentPolicyInherit::All => vars.into_iter().collect(),
+        ShellEnvironmentPolicyInherit::All => all_vars.clone().into_iter().collect(),
         ShellEnvironmentPolicyInherit::None => HashMap::new(),
         ShellEnvironmentPolicyInherit::Core => {
-            const CORE_VARS: &[&str] = &[
-                "HOME", "LOGNAME", "PATH", "SHELL", "USER", "USERNAME", "TMPDIR", "TEMP", "TMP",
-            ];
-            let allow: HashSet<&str> = CORE_VARS.iter().copied().collect();
-            vars.into_iter()
-                .filter(|(k, _)| allow.contains(k.as_str()))
-                .collect()
+            #[cfg(not(target_os = "windows"))]
+            {
+                const CORE_VARS: &[&str] = &[
+                    "HOME", "LOGNAME", "PATH", "SHELL", "USER", "USERNAME", "TMPDIR", "TEMP", "TMP",
+                ];
+                let allow: HashSet<&str> = CORE_VARS.iter().copied().collect();
+                all_vars
+                    .iter()
+                    .filter(|(k, _)| allow.contains(k.as_str()))
+                    .cloned()
+                    .collect()
+            }
+            #[cfg(target_os = "windows")]
+            {
+                // On Windows, preserve a minimal set of variables required for process startup
+                // and path resolution. Match names case-insensitively.
+                const CORE_VARS_WIN: &[&str] = &[
+                    "SystemRoot",
+                    "ComSpec",
+                    "SystemDrive",
+                    "Path",
+                    "PATHEXT",
+                    "TEMP",
+                    "TMP",
+                    "USERNAME",
+                    "USERPROFILE",
+                ];
+                all_vars
+                    .iter()
+                    .filter(|(k, _)| {
+                        CORE_VARS_WIN
+                            .iter()
+                            .any(|name| k.eq_ignore_ascii_case(name))
+                    })
+                    .cloned()
+                    .collect::<HashMap<_, _>>()
+            }
         }
     };
 
@@ -63,6 +94,34 @@ where
     // Step 5 – If include_only is non-empty, keep *only* the matching vars.
     if !policy.include_only.is_empty() {
         env_map.retain(|k, _| matches_any(k, &policy.include_only));
+    }
+
+    // Ensure essential Windows variables are retained even after filtering.
+    #[cfg(target_os = "windows")]
+    {
+        for required in [
+            "SystemRoot",
+            "WINDIR",
+            "ComSpec",
+            "SystemDrive",
+            "Path",
+            "PATHEXT",
+            "TEMP",
+            "TMP",
+            "USERPROFILE",
+            "LOCALAPPDATA",
+            "APPDATA",
+        ] {
+            let present = env_map.keys().any(|k| k.eq_ignore_ascii_case(required));
+            if !present {
+                if let Some((orig_key, val)) = all_vars
+                    .iter()
+                    .find(|(k, _)| k.eq_ignore_ascii_case(required))
+                {
+                    env_map.insert(orig_key.clone(), val.clone());
+                }
+            }
+        }
     }
 
     env_map

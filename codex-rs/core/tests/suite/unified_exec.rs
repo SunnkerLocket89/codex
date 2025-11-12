@@ -170,8 +170,14 @@ async fn unified_exec_emits_exec_command_begin_event() -> Result<()> {
     } = builder.build(&server).await?;
 
     let call_id = "uexec-begin-event";
+
+    #[cfg(not(target_os = "windows"))]
+    let cmd = "/bin/echo hello unified exec";
+    #[cfg(target_os = "windows")]
+    let cmd = "powershell.exe -Command \"Write-Output 'hello unified exec'\"";
+
     let args = json!({
-        "cmd": "/bin/echo hello unified exec".to_string(),
+        "cmd": cmd.to_string(),
         "yield_time_ms": 250,
     });
 
@@ -212,9 +218,11 @@ async fn unified_exec_emits_exec_command_begin_event() -> Result<()> {
     })
     .await;
 
-    assert_eq!(
-        begin_event.command,
-        vec!["/bin/echo hello unified exec".to_string()]
+    assert!(
+        begin_event
+            .command
+            .iter()
+            .any(|cmd_arg| cmd_arg.contains("hello unified exec")),
     );
     assert_eq!(begin_event.cwd, cwd.path());
 

@@ -43,12 +43,37 @@ impl UnifiedExecSessionManager {
             .workdir
             .clone()
             .unwrap_or_else(|| context.turn.cwd.clone());
-        let shell_flag = if request.login { "-lc" } else { "-c" };
-        let command = vec![
-            request.shell.to_string(),
-            shell_flag.to_string(),
-            request.command.to_string(),
-        ];
+        let command = {
+            #[cfg(target_os = "windows")]
+            {
+                let shell_lower = request.shell.to_ascii_lowercase();
+                if shell_lower.contains("pwsh") || shell_lower.contains("powershell") {
+                    let mut parts = vec![request.shell.to_string(), "-NoLogo".to_string()];
+                    if !request.login {
+                        parts.push("-NoProfile".to_string());
+                    }
+                    parts.push("-Command".to_string());
+                    parts.push(request.command.to_string());
+                    parts
+                } else {
+                    let flag = if request.login { "-lc" } else { "-c" };
+                    vec![
+                        request.shell.to_string(),
+                        flag.to_string(),
+                        request.command.to_string(),
+                    ]
+                }
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let flag = if request.login { "-lc" } else { "-c" };
+                vec![
+                    request.shell.to_string(),
+                    flag.to_string(),
+                    request.command.to_string(),
+                ]
+            }
+        };
 
         let session = self
             .open_session_with_sandbox(

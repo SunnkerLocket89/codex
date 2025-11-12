@@ -154,14 +154,17 @@ fn create_exec_command_tool() -> ToolSpec {
     properties.insert(
         "shell".to_string(),
         JsonSchema::String {
-            description: Some("Shell binary to launch. Defaults to /bin/bash.".to_string()),
+            description: Some(
+                "Shell binary to launch. Defaults to /bin/bash (Unix) or powershell.exe (Windows)."
+                    .to_string(),
+            ),
         },
     );
     properties.insert(
         "login".to_string(),
         JsonSchema::Boolean {
             description: Some(
-                "Whether to run the shell with -l/-i semantics. Defaults to true.".to_string(),
+                "Whether to run the shell with -l/-i semantics. Defaults to true (Unix) or false (Windows).".to_string(),
             ),
         },
     );
