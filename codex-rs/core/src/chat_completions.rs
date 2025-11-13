@@ -480,7 +480,10 @@ async fn append_reasoning_text(
         content.push(ReasoningItemContent::ReasoningText { text: text.clone() });
 
         let _ = tx_event
-            .send(Ok(ResponseEvent::ReasoningContentDelta(text.clone())))
+            .send(Ok(ResponseEvent::ReasoningContentDelta {
+                delta: text.clone(),
+                summary_index: 0,
+            }))
             .await;
     }
 }
@@ -898,20 +901,23 @@ where
                         continue;
                     }
                 }
-                Poll::Ready(Some(Ok(ResponseEvent::ReasoningContentDelta(delta)))) => {
+                Poll::Ready(Some(Ok(ResponseEvent::ReasoningContentDelta { delta, summary_index }))) => {
                     // Always accumulate reasoning deltas so we can emit a final Reasoning item at Completed.
                     this.cumulative_reasoning.push_str(&delta);
                     if matches!(this.mode, AggregateMode::Streaming) {
                         // In streaming mode, also forward the delta immediately.
-                        return Poll::Ready(Some(Ok(ResponseEvent::ReasoningContentDelta(delta))));
+                        return Poll::Ready(Some(Ok(ResponseEvent::ReasoningContentDelta {
+                            delta,
+                            summary_index,
+                        })));
                     } else {
                         continue;
                     }
                 }
-                Poll::Ready(Some(Ok(ResponseEvent::ReasoningSummaryDelta(_)))) => {
+                Poll::Ready(Some(Ok(ResponseEvent::ReasoningSummaryDelta { .. }))) => {
                     continue;
                 }
-                Poll::Ready(Some(Ok(ResponseEvent::ReasoningSummaryPartAdded))) => {
+                Poll::Ready(Some(Ok(ResponseEvent::ReasoningSummaryPartAdded { .. }))) => {
                     continue;
                 }
                 Poll::Ready(Some(Ok(ResponseEvent::OutputItemAdded(item)))) => {

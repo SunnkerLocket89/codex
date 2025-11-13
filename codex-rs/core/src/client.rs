@@ -553,6 +553,8 @@ struct SseEvent {
     response: Option<Value>,
     item: Option<Value>,
     delta: Option<String>,
+    #[serde(default)]
+    summary_index: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -813,7 +815,10 @@ async fn process_sse<S>(
             }
             "response.reasoning_summary_text.delta" => {
                 if let Some(delta) = event.delta {
-                    let event = ResponseEvent::ReasoningSummaryDelta(delta);
+                    let event = ResponseEvent::ReasoningSummaryDelta {
+                        delta,
+                        summary_index: event.summary_index,
+                    };
                     if tx_event.send(Ok(event)).await.is_err() {
                         return;
                     }
@@ -821,7 +826,10 @@ async fn process_sse<S>(
             }
             "response.reasoning_text.delta" => {
                 if let Some(delta) = event.delta {
-                    let event = ResponseEvent::ReasoningContentDelta(delta);
+                    let event = ResponseEvent::ReasoningContentDelta {
+                        delta,
+                        summary_index: event.summary_index,
+                    };
                     if tx_event.send(Ok(event)).await.is_err() {
                         return;
                     }
@@ -899,7 +907,9 @@ async fn process_sse<S>(
             }
             "response.reasoning_summary_part.added" => {
                 // Boundary between reasoning summary sections (e.g., titles).
-                let event = ResponseEvent::ReasoningSummaryPartAdded;
+                let event = ResponseEvent::ReasoningSummaryPartAdded {
+                    summary_index: event.summary_index,
+                };
                 if tx_event.send(Ok(event)).await.is_err() {
                     return;
                 }

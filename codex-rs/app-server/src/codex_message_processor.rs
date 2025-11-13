@@ -2590,13 +2590,22 @@ async fn apply_bespoke_event_handling(
         }
         // The logic of whether to emit reasoning summary or reasoning raw content delta is handled in the core.
         // The client just receives ReasoningDelta notifications and handles both cases the same way.
-        EventMsg::ReasoningContentDelta(ReasoningContentDeltaEvent { item_id, delta, .. })
-        | EventMsg::ReasoningRawContentDelta(ReasoningRawContentDeltaEvent {
-            item_id,
-            delta,
-            ..
-        }) => {
-            let notification = ReasoningDeltaNotification { item_id, delta };
+        EventMsg::ReasoningContentDelta(event) => {
+            let notification = ReasoningSummaryTextDeltaNotification {
+                item_id: event.item_id,
+                delta: event.delta,
+                summary_index: event.summary_index,
+            };
+            outgoing
+                .send_server_notification(ServerNotification::ReasoningDelta(notification))
+                .await;
+        }
+        EventMsg::ReasoningRawContentDelta(event) => {
+            let notification = ReasoningSummaryTextDeltaNotification {
+                item_id: event.item_id,
+                delta: event.delta,
+                summary_index: event.summary_index,
+            };
             outgoing
                 .send_server_notification(ServerNotification::ReasoningDelta(notification))
                 .await;
@@ -2604,6 +2613,7 @@ async fn apply_bespoke_event_handling(
         EventMsg::AgentReasoningSectionBreak(event) => {
             let notification = ReasoningSummaryPartAddedNotification {
                 item_id: event.item_id,
+                summary_index: event.summary_index,
             };
             outgoing
                 .send_server_notification(ServerNotification::ReasoningSummaryPartAdded(
