@@ -286,7 +286,7 @@ def _fetch_single_rg(
     archive_format = platform_info.get("format", "zst")
     archive_member = platform_info.get("path")
 
-    dest_dir = vendor_dir / target / "path"
+    dest_dir = vendor_dir / target / "rg"
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     is_windows = platform_key.startswith("win")
