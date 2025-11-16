@@ -23,7 +23,7 @@ PACKAGE_NATIVE_COMPONENTS: dict[str, list[str]] = {
 COMPONENT_DEST_DIR: dict[str, str] = {
     "codex": "codex",
     "codex-responses-api-proxy": "codex-responses-api-proxy",
-    "rg": "path",
+    "rg": "rg",
 }
 
 
