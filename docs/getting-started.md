@@ -8,12 +8,12 @@ Looking for something specific? Jump ahead:
 
 ### CLI usage
 
-| Command              | Purpose                            | Example                                       |
-| -------------------- | ---------------------------------- | --------------------------------------------- |
-| `codex`              | Interactive TUI                    | `codex`                                       |
-| `codex "..."`        | Initial prompt for interactive TUI | `codex "fix lint errors"`                     |
-| `codex exec "..."`   | Non-interactive "automation mode"  | `codex exec "explain utils.ts"`               |
-| `codex apply <id>`   | Apply ChatGPT task diff            | `codex apply 12345678-1234-1234-1234-123...`  |
+| Command            | Purpose                            | Example                                      |
+| ------------------ | ---------------------------------- | -------------------------------------------- |
+| `codex`            | Interactive TUI                    | `codex`                                      |
+| `codex "..."`      | Initial prompt for interactive TUI | `codex "fix lint errors"`                    |
+| `codex exec "..."` | Non-interactive "automation mode"  | `codex exec "explain utils.ts"`              |
+| `codex apply <id>` | Apply ChatGPT task diff            | `codex apply 12345678-1234-1234-1234-123...` |
 
 Key flags: `--model/-m`, `--ask-for-approval/-a`.
 
