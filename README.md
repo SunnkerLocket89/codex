@@ -124,6 +124,8 @@ Pass multiple `--policy` flags to test how several files combine. See the [`code
 - [**Advanced**](./docs/advanced.md)
   - [Tracing / verbose logging](./docs/advanced.md#tracing--verbose-logging)
   - [Model Context Protocol (MCP)](./docs/advanced.md#model-context-protocol-mcp)
+- **Templates**
+  - [Digital video forensic report template](./docs/digital-video-forensic-report-template.md)
 - [**Zero data retention (ZDR)**](./docs/zdr.md)
 - [**Contributing**](./docs/contributing.md)
 - [**Install & build**](./docs/install.md)
