@@ -273,7 +273,6 @@ async function main() {
     if (!baseUrl) {
       process.stderr.write("OPENAI_BASE_URL is required\n");
       process.exit(1);
-      return;
     }
 
     const payload = buildPayload(prompt, options, resumeThreadId);
