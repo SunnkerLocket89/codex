@@ -86,6 +86,7 @@ Codex CLI supports a rich set of configuration options, with preferences stored 
   - [GitHub Action](https://github.com/openai/codex-action)
   - [TypeScript SDK](./sdk/typescript/README.md)
   - [Non-interactive mode (`codex exec`)](./docs/exec.md)
+  - [Apply ChatGPT diffs (`codex apply`)](./docs/apply.md)
 - [**Advanced**](./docs/advanced.md)
   - [Tracing / verbose logging](./docs/advanced.md#tracing--verbose-logging)
   - [Model Context Protocol (MCP)](./docs/advanced.md#model-context-protocol-mcp)
