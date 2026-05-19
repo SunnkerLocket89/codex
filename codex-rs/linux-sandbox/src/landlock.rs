@@ -32,11 +32,7 @@ pub(crate) fn apply_sandbox_policy_to_current_thread(
     cwd: &Path,
 ) -> Result<()> {
     if !sandbox_policy.has_full_network_access() {
-        if sandbox_policy.allows_local_network_access() {
-            install_local_network_seccomp_filter_on_current_thread()?;
-        } else {
-            install_network_seccomp_filter_on_current_thread()?;
-        }
+        install_network_seccomp_filter_on_current_thread()?;
     }
 
     if !sandbox_policy.has_full_disk_write_access() {
@@ -92,7 +88,7 @@ fn install_network_seccomp_filter_on_current_thread() -> std::result::Result<(),
     // Build rule map.
     let mut rules: BTreeMap<i64, Vec<SeccompRule>> = BTreeMap::new();
 
-    // Helper – insert unconditional deny rule for syscall number.
+    // Helper - insert unconditional deny rule for syscall number.
     let mut deny_syscall = |nr: i64| {
         rules.insert(nr, vec![]); // empty rule vec = unconditional match
     };
@@ -130,8 +126,8 @@ fn install_network_seccomp_filter_on_current_thread() -> std::result::Result<(),
 
     let filter = SeccompFilter::new(
         rules,
-        SeccompAction::Allow,                     // default – allow
-        SeccompAction::Errno(libc::EPERM as u32), // when rule matches – return EPERM
+        SeccompAction::Allow,                     // default - allow
+        SeccompAction::Errno(libc::EPERM as u32), // when rule matches - return EPERM
         if cfg!(target_arch = "x86_64") {
             TargetArch::x86_64
         } else if cfg!(target_arch = "aarch64") {
@@ -145,13 +141,5 @@ fn install_network_seccomp_filter_on_current_thread() -> std::result::Result<(),
 
     apply_filter(&prog)?;
 
-    Ok(())
-}
-
-#[allow(clippy::unnecessary_wraps)]
-fn install_local_network_seccomp_filter_on_current_thread() -> std::result::Result<(), SandboxErr> {
-    // TODO: Implement filtering that permits loopback traffic while blocking external hosts.
-    // For now, fall back to allowing network syscalls when the configuration explicitly
-    // opts into local network access on Linux.
     Ok(())
 }
