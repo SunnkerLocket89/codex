@@ -33,6 +33,16 @@ fn create_env_from_core_vars() -> HashMap<String, String> {
     create_env(&policy)
 }
 
+fn workspace_write_policy(local_network: bool) -> SandboxPolicy {
+    SandboxPolicy::WorkspaceWrite {
+        writable_roots: Vec::new(),
+        network_access: false,
+        local_network,
+        exclude_tmpdir_env_var: true,
+        exclude_slash_tmp: true,
+    }
+}
+
 #[expect(clippy::print_stdout, clippy::expect_used, clippy::unwrap_used)]
 async fn run_cmd(cmd: &[&str], writable_roots: &[PathBuf], timeout_ms: u64, local_network: bool) {
     let cwd = std::env::current_dir().expect("cwd should exist");
@@ -47,16 +57,11 @@ async fn run_cmd(cmd: &[&str], writable_roots: &[PathBuf], timeout_ms: u64, loca
         arg0: None,
     };
 
-    let sandbox_policy = SandboxPolicy::WorkspaceWrite {
-        writable_roots: writable_roots.to_vec(),
-        network_access: false,
-        local_network,
-        // Exclude tmp-related folders from writable roots because we need a
-        // folder that is writable by tests but that we intentionally disallow
-        // writing to in the sandbox.
-        exclude_tmpdir_env_var: true,
-        exclude_slash_tmp: true,
-    };
+    let mut sandbox_policy = workspace_write_policy(local_network);
+    if let SandboxPolicy::WorkspaceWrite { writable_roots: roots, .. } = &mut sandbox_policy {
+        *roots = writable_roots.to_vec();
+    }
+
     let sandbox_program = env!("CARGO_BIN_EXE_codex-linux-sandbox");
     let codex_linux_sandbox_exe = Some(PathBuf::from(sandbox_program));
     let res = process_exec_tool_call(
@@ -134,48 +139,12 @@ async fn test_timeout() {
     run_cmd(&["sleep", "2"], &[], 50, false).await;
 }
 
-#[tokio::test]
-async fn test_local_network_allowed() {
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
-        .await
-        .expect("bind listener");
-    let port = listener.local_addr().expect("listener addr").port();
-
-    let server = tokio::spawn(async move {
-        use tokio::io::AsyncReadExt;
-        let (mut socket, _) = listener.accept().await?;
-        let mut buf = [0u8; 4];
-        socket.read_exact(&mut buf).await?;
-        Ok::<(), std::io::Error>(())
-    });
-
-    run_cmd(
-        &[
-            "python3",
-            "-c",
-            &format!(
-                "import socket; s=socket.create_connection((\"127.0.0.1\", {}), timeout=1); s.send(b\"ping\")",
-                port
-            ),
-        ],
-        &[],
-        NETWORK_TIMEOUT_MS,
-        true,
-    )
-    .await;
-
-    server
-        .await
-        .expect("server task join")
-        .expect("server read should succeed");
-}
-
 /// Helper that runs `cmd` under the Linux sandbox and asserts that the command
-/// does NOT succeed (i.e. returns a non‑zero exit code) **unless** the binary
+/// does NOT succeed (i.e. returns a non-zero exit code) **unless** the binary
 /// is missing in which case we silently treat it as an accepted skip so the
 /// suite remains green on leaner CI images.
 #[expect(clippy::expect_used)]
-async fn assert_network_blocked(cmd: &[&str]) {
+async fn assert_network_blocked_with_policy(cmd: &[&str], sandbox_policy: SandboxPolicy) {
     let cwd = std::env::current_dir().expect("cwd should exist");
     let sandbox_cwd = cwd.clone();
     let params = ExecParams {
@@ -190,7 +159,6 @@ async fn assert_network_blocked(cmd: &[&str]) {
         arg0: None,
     };
 
-    let sandbox_policy = SandboxPolicy::new_read_only_policy();
     let sandbox_program = env!("CARGO_BIN_EXE_codex-linux-sandbox");
     let codex_linux_sandbox_exe: Option<PathBuf> = Some(PathBuf::from(sandbox_program));
     let result = process_exec_tool_call(
@@ -215,9 +183,9 @@ async fn assert_network_blocked(cmd: &[&str]) {
     dbg!(&output.stdout.text);
     dbg!(&output.exit_code);
 
-    // A completely missing binary exits with 127.  Anything else should also
-    // be non‑zero (EPERM from seccomp will usually bubble up as 1, 2, 13…)
-    // If—*and only if*—the command exits 0 we consider the sandbox breached.
+    // A completely missing binary exits with 127. Anything else should also
+    // be non-zero (EPERM from seccomp will usually bubble up as 1, 2, 13...)
+    // If - and only if - the command exits 0 we consider the sandbox breached.
 
     if output.exit_code == 0 {
         panic!(
@@ -225,6 +193,23 @@ async fn assert_network_blocked(cmd: &[&str]) {
             output.stdout.text, output.stderr.text
         );
     }
+}
+
+async fn assert_network_blocked(cmd: &[&str]) {
+    assert_network_blocked_with_policy(cmd, SandboxPolicy::new_read_only_policy()).await;
+}
+
+#[tokio::test]
+async fn sandbox_blocks_external_network_when_local_network_enabled() {
+    assert_network_blocked_with_policy(
+        &[
+            "python3",
+            "-c",
+            "import socket; socket.create_connection(('1.1.1.1', 80), timeout=1)",
+        ],
+        workspace_write_policy(true),
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -239,19 +224,19 @@ async fn sandbox_blocks_wget() {
 
 #[tokio::test]
 async fn sandbox_blocks_ping() {
-    // ICMP requires raw socket – should be denied quickly with EPERM.
+    // ICMP requires raw socket - should be denied quickly with EPERM.
     assert_network_blocked(&["ping", "-c", "1", "8.8.8.8"]).await;
 }
 
 #[tokio::test]
 async fn sandbox_blocks_nc() {
-    // Zero‑length connection attempt to localhost.
+    // Zero-length connection attempt to localhost.
     assert_network_blocked(&["nc", "-z", "127.0.0.1", "80"]).await;
 }
 
 #[tokio::test]
 async fn sandbox_blocks_ssh() {
-    // Force ssh to attempt a real TCP connection but fail quickly.  `BatchMode`
+    // Force ssh to attempt a real TCP connection but fail quickly. `BatchMode`
     // avoids password prompts, and `ConnectTimeout` keeps the hang time low.
     assert_network_blocked(&[
         "ssh",
@@ -272,7 +257,7 @@ async fn sandbox_blocks_getent() {
 #[tokio::test]
 async fn sandbox_blocks_dev_tcp_redirection() {
     // This syntax is only supported by bash and zsh. We try bash first.
-    // Fallback generic socket attempt using /bin/sh with bash‑style /dev/tcp.  Not
+    // Fallback generic socket attempt using /bin/sh with bash-style /dev/tcp. Not
     // all images ship bash, so we guard against 127 as well.
     assert_network_blocked(&["bash", "-c", "echo hi > /dev/tcp/127.0.0.1/80"]).await;
 }
