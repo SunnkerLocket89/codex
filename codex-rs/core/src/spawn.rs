@@ -11,11 +11,16 @@ use crate::protocol::SandboxPolicy;
 /// if both of the following are true:
 ///
 /// 1. The process was spawned by Codex as part of a shell tool call.
-/// 2. SandboxPolicy.has_full_network_access() was false for the tool call.
+/// 2. The sandbox policy does not allow full or local-only network access.
 ///
 /// We may try to have just one environment variable for all sandboxing
 /// attributes, so this may change in the future.
 pub const CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR: &str = "CODEX_SANDBOX_NETWORK_DISABLED";
+
+/// Experimental environment variable that will be set to some non-empty value
+/// when the sandbox policy allows loopback/local network access without full
+/// outbound network access.
+pub const CODEX_SANDBOX_NETWORK_LOCAL_ONLY_ENV_VAR: &str = "CODEX_SANDBOX_NETWORK_LOCAL_ONLY";
 
 /// Should be set when the process is spawned under a sandbox. Currently, the
 /// value is "seatbelt" for macOS, but it may change in the future to
@@ -33,8 +38,8 @@ pub enum StdioPolicy {
 /// (and `Child`) honor the configuration.
 ///
 /// For now, we take `SandboxPolicy` as a parameter to spawn_child() because
-/// we need to determine whether to set the
-/// `CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR` environment variable.
+/// we need to determine whether to set the network sandbox environment
+/// variables.
 pub(crate) async fn spawn_child_async(
     program: PathBuf,
     args: Vec<String>,
@@ -56,7 +61,11 @@ pub(crate) async fn spawn_child_async(
     cmd.env_clear();
     cmd.envs(env);
 
-    if !sandbox_policy.has_full_network_access() {
+    if sandbox_policy.has_full_network_access() {
+        // Leave network markers unset for full network access.
+    } else if sandbox_policy.allows_local_network_access() {
+        cmd.env(CODEX_SANDBOX_NETWORK_LOCAL_ONLY_ENV_VAR, "1");
+    } else {
         cmd.env(CODEX_SANDBOX_NETWORK_DISABLED_ENV_VAR, "1");
     }
 
