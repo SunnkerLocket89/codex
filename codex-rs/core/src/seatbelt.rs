@@ -9,6 +9,12 @@ use crate::spawn::StdioPolicy;
 use crate::spawn::spawn_child_async;
 
 const MACOS_SEATBELT_BASE_POLICY: &str = include_str!("seatbelt_base_policy.sbpl");
+const MACOS_LOCAL_NETWORK_POLICY: &str = r#"(allow network-outbound
+    (remote ip "127.0.0.1:*")
+    (remote ip "::1:*"))
+(allow network-inbound
+    (local ip "127.0.0.1:*")
+    (local ip "::1:*"))"#;
 
 /// When working with `sandbox-exec`, only consider `sandbox-exec` in `/usr/bin`
 /// to defend against an attacker trying to inject a malicious version on the
@@ -107,7 +113,7 @@ pub(crate) fn create_seatbelt_command_args(
     let network_policy = if sandbox_policy.has_full_network_access() {
         "(allow network-outbound)\n(allow network-inbound)\n(allow system-socket)"
     } else if sandbox_policy.allows_local_network_access() {
-        "(allow network* (local ip))"
+        MACOS_LOCAL_NETWORK_POLICY
     } else {
         ""
     };
@@ -332,8 +338,16 @@ mod tests {
         assert_eq!(args.first().map(String::as_str), Some("-p"));
         let policy_text = &args[1];
         assert!(
-            policy_text.contains("(allow network* (local ip))"),
-            "expected local network rule in policy:\n{policy_text}"
+            policy_text.contains("(allow network-outbound\n    (remote ip \"127.0.0.1:*\")\n    (remote ip \"::1:*\"))"),
+            "expected loopback outbound rule in policy:\n{policy_text}"
+        );
+        assert!(
+            policy_text.contains("(allow network-inbound\n    (local ip \"127.0.0.1:*\")\n    (local ip \"::1:*\"))"),
+            "expected loopback inbound rule in policy:\n{policy_text}"
+        );
+        assert!(
+            !policy_text.contains("(allow network* (local ip))"),
+            "unexpected broad local network allowance in policy:\n{policy_text}"
         );
         assert!(
             !policy_text.contains("(allow network-outbound)\n(allow network-inbound)"),
