@@ -92,7 +92,7 @@ async fn get_config_toml_parses_all_fields() {
             sandbox_settings: Some(SandboxSettings {
                 writable_roots: vec!["/tmp".into()],
                 network_access: Some(true),
-                local_network: None,
+                local_network: Some(false),
                 exclude_tmpdir_env_var: Some(true),
                 exclude_slash_tmp: Some(true),
             }),
