@@ -6,9 +6,9 @@ What Codex is allowed to do is governed by a combination of **sandbox modes** (w
 
 Codex starts conservatively. Until you explicitly tell it a workspace is trusted, the CLI defaults to **read-only sandboxing** with the `read-only` approval preset. Codex can inspect files and answer questions, but every edit or command requires approval.
 
-When you mark a workspace as trusted (for example via the onboarding prompt or `/approvals` → “Trust this directory”), Codex upgrades the default preset to **Auto**: sandboxed writes inside the workspace with `AskForApproval::OnRequest`. Codex only interrupts you when it needs to leave the workspace or rerun something outside the sandbox.
+When you mark a workspace as trusted (for example via the onboarding prompt or `/approvals` -> "Trust this directory"), Codex upgrades the default preset to **Auto**: sandboxed writes inside the workspace with `AskForApproval::OnRequest`. Codex only interrupts you when it needs to leave the workspace or rerun something outside the sandbox.
 
-If you want maximum guardrails for a trusted repo, switch back to Read Only from the `/approvals` picker. If you truly need hands-off automation, use `Full Access`—but be deliberate, because that skips both the sandbox and approvals.
+If you want maximum guardrails for a trusted repo, switch back to Read Only from the `/approvals` picker. If you truly need hands-off automation, use `Full Access`--but be deliberate, because that skips both the sandbox and approvals.
 
 #### Defaults and recommendations
 
@@ -33,7 +33,7 @@ Yes, you can disable all approval prompts with `--ask-for-approval never`. This 
 | Auto (preset; trusted repos)       | `--full-auto` (equivalent to `--sandbox workspace-write` + `--ask-for-approval on-request`) | Codex runs sandboxed commands that can write inside the workspace without prompting. Escalates only when it must leave the sandbox.                   |
 | YOLO (not recommended)             | `--dangerously-bypass-approvals-and-sandbox` (alias: `--yolo`)                              | No sandbox; no prompts                                                                                                                                |
 
-> Note: In `workspace-write`, network is disabled by default unless you enable loopback access (`[sandbox_workspace_write].local_network = true`) or full outbound network (`[sandbox_workspace_write].network_access = true`).
+> Note: In `workspace-write`, network is disabled by default unless you enable platform-supported loopback access (`[sandbox_workspace_write].local_network = true`) or full outbound network (`[sandbox_workspace_write].network_access = true`). Linux currently fails closed for loopback-only access.
 
 #### Fine-tuning in `config.toml`
 
@@ -48,7 +48,7 @@ sandbox_mode    = "workspace-write"
 
 # Optional: allow network in workspace-write mode
 [sandbox_workspace_write]
-# Allow local loopback traffic (e.g., hitting a dev server on 127.0.0.1).
+# Allow local loopback traffic on supported platforms (macOS today).
 local_network = true
 # Flip to true only if you want unrestricted outbound network access.
 network_access = false
@@ -70,8 +70,8 @@ sandbox_mode    = "read-only"
 
 The mechanism Codex uses to enforce the sandbox policy depends on your OS:
 
-- **macOS 12+** uses **Apple Seatbelt**. Codex invokes `sandbox-exec` with a profile that corresponds to the selected `--sandbox` mode, constraining filesystem and network access at the OS level.
-- **Linux** combines **Landlock** and **seccomp** APIs to approximate the same guarantees. Kernel support is required; older kernels may not expose the necessary features. The current implementation cannot distinguish loopback traffic—enabling `local_network` lifts the network seccomp filter entirely.
+- **macOS 12+** uses **Apple Seatbelt**. Codex invokes `sandbox-exec` with a profile that corresponds to the selected `--sandbox` mode, constraining filesystem and network access at the OS level. The `local_network` workspace-write option permits loopback/local IP traffic without granting unrestricted outbound network access.
+- **Linux** combines **Landlock** and **seccomp** APIs to approximate the same guarantees. Kernel support is required; older kernels may not expose the necessary features. The current implementation cannot distinguish loopback traffic from other outbound connections, so `local_network` fails closed on Linux and keeps the restrictive network seccomp filter installed.
 
 In containerized Linux environments (for example Docker), sandboxing may not work when the host or container configuration does not expose Landlock/seccomp. In those cases, configure the container to provide the isolation you need and run Codex with `--sandbox danger-full-access` (or the shorthand `--dangerously-bypass-approvals-and-sandbox`) inside that container.
 
