@@ -174,6 +174,7 @@ async fn run_codex_tool_session_inner(
 
                 match event.msg {
                     EventMsg::ExecApprovalRequest(ExecApprovalRequestEvent {
+                        turn_id: _,
                         command,
                         cwd,
                         call_id,
@@ -203,6 +204,9 @@ async fn run_codex_tool_session_inner(
                         });
                         outgoing.send_response(request_id.clone(), result).await;
                         break;
+                    }
+                    EventMsg::Warning(_) => {
+                        continue;
                     }
                     EventMsg::ApplyPatchApprovalRequest(ApplyPatchApprovalRequestEvent {
                         call_id,
@@ -255,6 +259,9 @@ async fn run_codex_tool_session_inner(
                     EventMsg::AgentReasoningDelta(_) => {
                         // TODO: think how we want to support this in the MCP
                     }
+                    EventMsg::McpStartupUpdate(_) | EventMsg::McpStartupComplete(_) => {
+                        // Ignored in MCP tool runner.
+                    }
                     EventMsg::AgentMessage(AgentMessageEvent { .. }) => {
                         // TODO: think how we want to support this in the MCP
                     }
@@ -288,9 +295,13 @@ async fn run_codex_tool_session_inner(
                     | EventMsg::EnteredReviewMode(_)
                     | EventMsg::ItemStarted(_)
                     | EventMsg::ItemCompleted(_)
+                    | EventMsg::AgentMessageContentDelta(_)
+                    | EventMsg::ReasoningContentDelta(_)
+                    | EventMsg::ReasoningRawContentDelta(_)
                     | EventMsg::UndoStarted(_)
                     | EventMsg::UndoCompleted(_)
-                    | EventMsg::ExitedReviewMode(_) => {
+                    | EventMsg::ExitedReviewMode(_)
+                    | EventMsg::DeprecationNotice(_) => {
                         // For now, we do not do anything extra for these
                         // events. Note that
                         // send(codex_event_to_notification(&event)) above has

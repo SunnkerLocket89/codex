@@ -1,6 +1,5 @@
 use crate::codex::Session;
 use crate::codex::TurnContext;
-use crate::conversation_history::ConversationHistory;
 use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ResponseInputItem;
 use codex_protocol::models::ResponseItem;
@@ -11,101 +10,61 @@ use tracing::warn;
 /// - `ResponseInputItem`s to send back to the model on the next turn.
 pub(crate) async fn process_items(
     processed_items: Vec<crate::codex::ProcessedResponseItem>,
-    is_review_mode: bool,
-    review_thread_history: &mut ConversationHistory,
     sess: &Session,
     turn_context: &TurnContext,
 ) -> (Vec<ResponseInputItem>, Vec<ResponseItem>) {
-    let mut items_to_record_in_conversation_history = Vec::<ResponseItem>::new();
+    let mut outputs_to_record = Vec::<ResponseItem>::new();
+    let mut new_inputs_to_record = Vec::<ResponseItem>::new();
     let mut responses = Vec::<ResponseInputItem>::new();
     for processed_response_item in processed_items {
         let crate::codex::ProcessedResponseItem { item, response } = processed_response_item;
-        match (&item, &response) {
-            (ResponseItem::Message { role, .. }, None) if role == "assistant" => {
-                // If the model returned a message, we need to record it.
-                items_to_record_in_conversation_history.push(item);
-            }
-            (
-                ResponseItem::LocalShellCall { .. },
-                Some(ResponseInputItem::FunctionCallOutput { call_id, output }),
-            ) => {
-                items_to_record_in_conversation_history.push(item);
-                items_to_record_in_conversation_history.push(ResponseItem::FunctionCallOutput {
+
+        if let Some(response) = &response {
+            responses.push(response.clone());
+        }
+
+        match response {
+            Some(ResponseInputItem::FunctionCallOutput { call_id, output }) => {
+                new_inputs_to_record.push(ResponseItem::FunctionCallOutput {
                     call_id: call_id.clone(),
                     output: output.clone(),
                 });
             }
-            (
-                ResponseItem::FunctionCall { .. },
-                Some(ResponseInputItem::FunctionCallOutput { call_id, output }),
-            ) => {
-                items_to_record_in_conversation_history.push(item);
-                items_to_record_in_conversation_history.push(ResponseItem::FunctionCallOutput {
+
+            Some(ResponseInputItem::CustomToolCallOutput { call_id, output }) => {
+                new_inputs_to_record.push(ResponseItem::CustomToolCallOutput {
                     call_id: call_id.clone(),
                     output: output.clone(),
                 });
             }
-            (
-                ResponseItem::CustomToolCall { .. },
-                Some(ResponseInputItem::CustomToolCallOutput { call_id, output }),
-            ) => {
-                items_to_record_in_conversation_history.push(item);
-                items_to_record_in_conversation_history.push(ResponseItem::CustomToolCallOutput {
-                    call_id: call_id.clone(),
-                    output: output.clone(),
-                });
-            }
-            (
-                ResponseItem::FunctionCall { .. },
-                Some(ResponseInputItem::McpToolCallOutput { call_id, result }),
-            ) => {
-                items_to_record_in_conversation_history.push(item);
+            Some(ResponseInputItem::McpToolCallOutput { call_id, result }) => {
                 let output = match result {
-                    Ok(call_tool_result) => FunctionCallOutputPayload::from(call_tool_result),
+                    Ok(call_tool_result) => FunctionCallOutputPayload::from(&call_tool_result),
                     Err(err) => FunctionCallOutputPayload {
                         content: err.clone(),
                         success: Some(false),
                         ..Default::default()
                     },
                 };
-                items_to_record_in_conversation_history.push(ResponseItem::FunctionCallOutput {
+                new_inputs_to_record.push(ResponseItem::FunctionCallOutput {
                     call_id: call_id.clone(),
                     output,
                 });
             }
-            (
-                ResponseItem::Reasoning {
-                    id,
-                    summary,
-                    content,
-                    encrypted_content,
-                },
-                None,
-            ) => {
-                items_to_record_in_conversation_history.push(ResponseItem::Reasoning {
-                    id: id.clone(),
-                    summary: summary.clone(),
-                    content: content.clone(),
-                    encrypted_content: encrypted_content.clone(),
-                });
-            }
+            None => {}
             _ => {
                 warn!("Unexpected response item: {item:?} with response: {response:?}");
             }
         };
-        if let Some(response) = response {
-            responses.push(response);
-        }
+
+        outputs_to_record.push(item);
     }
 
+    let all_items_to_record = [outputs_to_record, new_inputs_to_record].concat();
     // Only attempt to take the lock if there is something to record.
-    if !items_to_record_in_conversation_history.is_empty() {
-        if is_review_mode {
-            review_thread_history.record_items(items_to_record_in_conversation_history.iter());
-        } else {
-            sess.record_conversation_items(turn_context, &items_to_record_in_conversation_history)
-                .await;
-        }
+    if !all_items_to_record.is_empty() {
+        sess.record_conversation_items(turn_context, &all_items_to_record)
+            .await;
     }
-    (responses, items_to_record_in_conversation_history)
+    (responses, all_items_to_record)
 }
