@@ -6,6 +6,10 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  actions: write
+  contents: read
+
 # CI builds in debug (dev) for faster signal.
 
 jobs:
@@ -29,7 +33,7 @@ jobs:
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             BASE_SHA='${{ github.event.pull_request.base.sha }}'
             echo "Base SHA: $BASE_SHA"
-            # List files changed between base and current HEAD (merge-base aware)
+            # List files changed between base and  current HEAD (merge-base aware)
             mapfile -t files < <(git diff --name-only --no-renames "$BASE_SHA"...HEAD)
           else
             # On push / manual runs, default to running everything
@@ -98,7 +102,11 @@ jobs:
       # Speed up repeated builds across CI runs by caching compiled objects (non-Windows).
       USE_SCCACHE: ${{ startsWith(matrix.runner, 'windows') && 'false' || 'true' }}
       CARGO_INCREMENTAL: "0"
-      SCCACHE_CACHE_SIZE: 10G
+      SCCACHE_CACHE_SIZE: 20G
+      # Use lld on Windows targets to speed up linking. rust-lld.exe ships with
+      # the Rust toolchain, so no extra install is required.
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER: rust-lld.exe
+      CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_LINKER: rust-lld.exe
 
     strategy:
       fail-fast: false
@@ -174,7 +182,7 @@ jobs:
         uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2
         with:
           tool: sccache
-          version: 0.7.5
+          version: 0.12.0
 
       - name: Configure sccache backend
         if: ${{ env.USE_SCCACHE == 'true' }}
@@ -190,6 +198,26 @@ jobs:
             echo "Using sccache local disk + actions/cache fallback"
           fi
 
+      - name: Force sccache GHA (Windows)
+        if: startsWith(matrix.runner, 'windows')
+        shell: bash
+        run: |
+          if [[ -n "${ACTIONS_CACHE_URL:-}" && -n "${ACTIONS_RUNTIME_TOKEN:-}" ]]; then
+            echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+            echo "Forcing sccache GitHub backend on Windows"
+          fi
+
+      - name: Remap debug paths (Windows)
+        if: startsWith(matrix.runner, 'windows')
+        shell: bash
+        run: |
+          echo "RUSTFLAGS=--remap-path-prefix=${GITHUB_WORKSPACE}=." >> "$GITHUB_ENV"
+
+      - name: Lower debug info (Windows, dev)
+        if: startsWith(matrix.runner, 'windows')
+        shell: bash
+        run: |
+          echo "CARGO_PROFILE_DEV_DEBUG=0" >> "$GITHUB_ENV"
       - name: Enable sccache wrapper
         if: ${{ env.USE_SCCACHE == 'true' }}
         shell: bash
@@ -201,10 +229,17 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}/.sccache/
-          key: sccache-${{ matrix.runner }}-${{ matrix.target }}-${{ matrix.profile }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
+          key: sccache-${{ github.job }}-${{ matrix.runner }}-${{ matrix.target }}-${{ matrix.profile }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
           restore-keys: |
+            sccache-${{ github.job }}-${{ matrix.runner }}-${{ matrix.target }}-${{ matrix.profile }}-${{ hashFiles('**/Cargo.lock') }}-
             sccache-${{ matrix.runner }}-${{ matrix.target }}-${{ matrix.profile }}-${{ hashFiles('**/Cargo.lock') }}-
             sccache-${{ matrix.runner }}-${{ matrix.target }}-${{ matrix.profile }}-
+
+      - name: Start sccache server and zero stats
+        shell: bash
+        run: |
+          sccache --start-server || true
+          sccache --zero-stats || true
 
       - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl'}}
         name: Prepare APT cache directories (musl)
@@ -286,7 +321,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ github.workspace }}/.sccache/
-          key: sccache-${{ matrix.runner }}-${{ matrix.target }}-${{ matrix.profile }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
+          key: sccache-${{ github.job }}-${{ matrix.runner }}-${{ matrix.target }}-${{ matrix.profile }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
 
       - name: sccache stats
         if: always() && env.USE_SCCACHE == 'true'
@@ -336,7 +371,11 @@ jobs:
       # Speed up repeated builds across CI runs by caching compiled objects (non-Windows).
       USE_SCCACHE: ${{ startsWith(matrix.runner, 'windows') && 'false' || 'true' }}
       CARGO_INCREMENTAL: "0"
-      SCCACHE_CACHE_SIZE: 10G
+      SCCACHE_CACHE_SIZE: 20G
+      # Use lld on Windows targets to speed up linking. rust-lld.exe ships with
+      # the Rust toolchain, so no extra install is required.
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER: rust-lld.exe
+      CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_LINKER: rust-lld.exe
 
     strategy:
       fail-fast: false
@@ -344,19 +383,19 @@ jobs:
         include:
           - runner: macos-14
             target: aarch64-apple-darwin
-            profile: dev
+            profile: ci-test
           - runner: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
-            profile: dev
+            profile: ci-test
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-            profile: dev
+            profile: ci-test
           - runner: windows-latest
             target: x86_64-pc-windows-msvc
-            profile: dev
+            profile: ci-test
           - runner: windows-11-arm
             target: aarch64-pc-windows-msvc
-            profile: dev
+            profile: ci-test
 
     steps:
       - uses: actions/checkout@v5
@@ -382,7 +421,7 @@ jobs:
         uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2
         with:
           tool: sccache
-          version: 0.7.5
+          version: 0.12.0
 
       - name: Configure sccache backend
         if: ${{ env.USE_SCCACHE == 'true' }}
@@ -398,6 +437,26 @@ jobs:
             echo "Using sccache local disk + actions/cache fallback"
           fi
 
+      - name: Force sccache GHA (Windows)
+        if: startsWith(matrix.runner, 'windows')
+        shell: bash
+        run: |
+          if [[ -n "${ACTIONS_CACHE_URL:-}" && -n "${ACTIONS_RUNTIME_TOKEN:-}" ]]; then
+            echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+            echo "Forcing sccache GitHub backend on Windows"
+          fi
+
+      - name: Remap debug paths (Windows)
+        if: startsWith(matrix.runner, 'windows')
+        shell: bash
+        run: |
+          echo "RUSTFLAGS=--remap-path-prefix=${GITHUB_WORKSPACE}=." >> "$GITHUB_ENV"
+
+      - name: Lower debug info (Windows, ci-test)
+        if: startsWith(matrix.runner, 'windows')
+        shell: bash
+        run: |
+          echo "CARGO_PROFILE_CI_TEST_DEBUG=0" >> "$GITHUB_ENV"
       - name: Enable sccache wrapper
         if: ${{ env.USE_SCCACHE == 'true' }}
         shell: bash
@@ -409,11 +468,19 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}/.sccache/
-          key: sccache-${{ matrix.runner }}-${{ matrix.target }}-${{ matrix.profile }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
+          key: sccache-${{ github.job }}-${{ matrix.runner }}-${{ matrix.target }}-${{ matrix.profile }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
           restore-keys: |
+            sccache-${{ github.job }}-${{ matrix.runner }}-${{ matrix.target }}-${{ matrix.profile }}-${{ hashFiles('**/Cargo.lock') }}-
             sccache-${{ matrix.runner }}-${{ matrix.target }}-${{ matrix.profile }}-${{ hashFiles('**/Cargo.lock') }}-
             sccache-${{ matrix.runner }}-${{ matrix.target }}-${{ matrix.profile }}-
 
+      - name: Start sccache server and zero stats
+        shell: bash
+        run: |
+          sccache --start-server || true
+          sccache --zero-stats || true
+
+      - uses: taiki-e/install-action@0c5db7f7f897c03b771660e91d065338615679f4 # v2
       - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2
         with:
           tool: nextest
@@ -444,7 +511,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ github.workspace }}/.sccache/
-          key: sccache-${{ matrix.runner }}-${{ matrix.target }}-${{ matrix.profile }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
+          key: sccache-${{ github.job }}-${{ matrix.runner }}-${{ matrix.target }}-${{ matrix.profile }}-${{ hashFiles('**/Cargo.lock') }}-${{ github.run_id }}
 
       - name: sccache stats
         if: always() && env.USE_SCCACHE == 'true'
