@@ -10,6 +10,23 @@ In non-interactive mode, Codex does not ask for command or edit approvals. By de
 
 Use `codex exec --full-auto` to allow file edits. Use `codex exec --sandbox danger-full-access` to allow edits and networked commands.
 
+### Network POST example
+
+Some shell examples pipe repository data directly into an outbound HTTP request. For example:
+
+```shell
+git show HEAD | curl -s -X POST --data-binary @- https://httpbin.org/post
+```
+
+This command sends the current commit diff from `git show HEAD` as the request body of an outbound network `POST` to `https://httpbin.org/post`. Do not run it with sensitive changes unless you intend to transmit that diff to the remote service.
+
+If this example returns `404 Not Found`:
+
+1. Confirm the exact endpoint is `https://httpbin.org/post`.
+2. Retry with verbose curl output, for example `git show HEAD | curl -v -X POST --data-binary @- https://httpbin.org/post`, to inspect redirects, proxies, and response status.
+3. Check whether a corporate proxy, sandbox, or local network policy rewrites or blocks requests.
+4. If this command is part of the codebase, add a test using a local mock HTTP server rather than the public httpbin endpoint so behavior is deterministic and does not depend on external network availability.
+
 ### Default output mode
 
 By default, Codex streams its activity to stderr and only writes the final message from the agent to stdout. This makes it easier to pipe `codex exec` into another tool without extra filtering.
